@@ -1,11 +1,11 @@
 import pyodbc
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Form
 from pydantic import BaseModel
 
 
 class Item(BaseModel):
     name: str
-    number: str
+    number: int
     city: str
     salary: int
 
@@ -20,8 +20,8 @@ app = FastAPI()
 def create_connection():
     try:
         connection = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-                                    'Server=ENTER SEVER;'
-                                    'Database=ENTER DATABASE NAME;'
+                                    'Server=ADD SERVER STRING;'
+                                    'Database=ENTER DATABASE;'
                                     'Trusted_Connection=yes;')
         cursor = connection.cursor()
         if cursor:
@@ -31,7 +31,7 @@ def create_connection():
         return connection
 
     except Exception as e:
-        return HTTPException(status_code=500, detail="Database connection error...")
+        return HTTPException(status_code=500, detail=f"Database connection error...{e}")
 
 
 def resultset(cursor):
@@ -78,7 +78,7 @@ async def get_id_data(id: int):
         return {
             "code": 200,
             "message": "success",
-            "details": data_id
+            "details": data_id[0]
         }
     except pyodbc.Error as e:
         print(f"Error while fetching record id...{e}")
@@ -86,11 +86,15 @@ async def get_id_data(id: int):
 
 
 @app.post("/add_data/")
-# async def create_new_data(item: Item):
 async def create_new_data(fullitem: Fullitem):
     try:
         conn = create_connection()
         cur = conn.cursor()
+        cur.execute("select count(*) from data where ID = ?", (fullitem.id,))
+        existing_count = cur.fetchone()[0]
+        if existing_count > 0:
+            raise HTTPException(status_code=404, detail=f"ID {fullitem.id} already exists")
+
         cur.execute("insert into data(Id, Name, Number, City, Salary) values (?,?,?,?,?)",
                     (fullitem.id, fullitem.name, fullitem.number, fullitem.city, fullitem.salary))
         conn.commit()
@@ -105,21 +109,41 @@ async def create_new_data(fullitem: Fullitem):
 
 
 @app.put("/update_data/{id}")
-async def update_details(id: int, item: Item):
+async def update_details(
+        id: int,
+        name: str = Form(None),
+        number: int = Form(None),
+        city: str = Form(None),
+        salary: int = Form(None)
+):
     try:
         conn = create_connection()
         cur = conn.cursor()
+        cur.execute("select Name, Number, City, Salary from data where ID = ?", (id,))
+        existing_record = cur.fetchone()
+        if not existing_record:
+            raise HTTPException(status_code=404, detail="record not found")
+
+        update_values = {
+            "name": name if name not in [None, "", "string"] else existing_record[0],
+            "number": int(number) if number and str(number).isdigit() else existing_record[1],
+            "city": city if city not in [None, "", "string"] else existing_record[2],
+            "salary": int(salary) if salary and str(salary).isdigit() else existing_record[3]
+        }
         cur.execute("update data set Name=?, Number=?, City=?, Salary=? where ID = ?",
-                    (item.name, item.number, item.city, item.salary, id))
+                    (update_values["name"], update_values["number"], update_values["city"],
+                     update_values["salary"], id))
         conn.commit()
         return {
             "code": 200,
             "message": "success",
             "details": "data updated successfully"
         }
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Number must be an integer")
     except pyodbc.Error as e:
         print(f"Error while updating records...{e}")
-        raise HTTPException(status_code=404, detail="Failed to update records")
+        raise HTTPException(status_code=500, detail="Failed to update records")
 
 
 @app.delete("/delete/{id}")

@@ -1,35 +1,37 @@
 import pyodbc
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+
+
+class Item(BaseModel):
+    name: str
+    number: str
+    city: str
+    salary: int
+
+
+class Fullitem(Item):
+    id: int
+
 
 app = FastAPI()
 
 
-class User(BaseModel):
-    person_id: int
-    name: str
-    email: str
-    password: str
-    city: str
-
-
-def create_conn():
+def create_connection():
     try:
-        conn = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
-                              'Server=Enter server details'
-                              'Database=database name;'
-                              'Trusted_Connection=yes;')
-        cursor = conn.cursor()
+        connection = pyodbc.connect('Driver={ODBC Driver 17 for SQL Server};'
+                                    'Server=ENTER SEVER;'
+                                    'Database=ENTER DATABASE NAME;'
+                                    'Trusted_Connection=yes;')
+        cursor = connection.cursor()
         if cursor:
-            print("connection successfully")
+            print("connected successfully....")
         else:
-            print("No curser available...")
-        return conn
+            print("No cursor available")
+        return connection
 
-    except pyodbc.Error as e:
-        print(f"connection Failed..{e}")
-        raise HTTPException(status_code=500, detail="Database connection error...")
+    except Exception as e:
+        return HTTPException(status_code=500, detail="Database connection error...")
 
 
 def resultset(cursor):
@@ -42,98 +44,97 @@ def resultset(cursor):
             if row_data is None:
                 break
             row = dict(zip(names, row_data))
-            sets.append(row)
+            set_.append(row)
         sets.append(list(set_))
-
         if cursor.nextset() is None or cursor.description is None:
             break
     return sets
 
 
-@app.get('/record')
+@app.get("/records/")
 async def get_data():
     try:
-        cur = create_conn().cursor()
-        cur.execute("select * from abc")
+        conn = create_connection()
+        cur = conn.cursor()
+        cur.execute("select * from data")
         data = resultset(cur)
         return {
             "code": 200,
-            "data": data
+            "message": "success",
+            "details": data[0]
         }
-
     except pyodbc.Error as e:
-        print(f"Error while fetching data: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve records")
+        print(f"Error while fetch records...{e}")
+        raise HTTPException(status_code=404, detail="Failed to fetch records")
 
 
-@app.get('/record_id{person_id}')
-async def get_id_data(person_id: int):
+@app.get("/records/{id}")
+async def get_id_data(id: int):
     try:
-        connection = create_conn()
-        cur = connection.cursor()
-        cur.execute("select * from abc where PersonID = ?", person_id)
+        conn = create_connection()
+        cur = conn.cursor()
+        cur.execute("select * from data where id = ?", id)
         data_id = resultset(cur)
         return {
             "code": 200,
-            "data": data_id
+            "message": "success",
+            "details": data_id
         }
-
     except pyodbc.Error as e:
-        print(f"Error while fetching data: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve records")
+        print(f"Error while fetching record id...{e}")
+        raise HTTPException(status_code=404, detail="Failed to fetch record id")
 
 
-@app.post('/add_user/')
-async def create_user(user: User):
+@app.post("/add_data/")
+# async def create_new_data(item: Item):
+async def create_new_data(fullitem: Fullitem):
     try:
-        connection = create_conn()
-        cur = connection.cursor()
-        cur.execute("insert into abc (PersonID, Name, Email, Password, City) values (?,?,?,?,?)",
-                    (user.person_id, user.name, user.email, user.password, user.city))
-        connection.commit()
+        conn = create_connection()
+        cur = conn.cursor()
+        cur.execute("insert into data(Id, Name, Number, City, Salary) values (?,?,?,?,?)",
+                    (fullitem.id, fullitem.name, fullitem.number, fullitem.city, fullitem.salary))
+        conn.commit()
         return {
             "code": 200,
-            "data": "user created succefully..."
+            "message": "success",
+            "details": "New data created successfully..."
         }
-
     except pyodbc.Error as e:
-        print(f"Error while fetching data: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve records")
+        print(f"Error while creating new records...{e}")
+        raise HTTPException(status_code=404, detail="Failed to create new records")
 
 
-@app.put('/update/{person_id}')
-async def update_data(person_id: int, user: User):
+@app.put("/update_data/{id}")
+async def update_details(id: int, item: Item):
     try:
-        connection = create_conn()
-        cur = connection.cursor()
-
-        cur.execute(
-            "UPDATE abc SET Name = ?, Email = ?, Password = ?, City = ? WHERE PersonID = ? ",
-            (user.name, user.email, user.password, user.city, person_id)
-        )
-
-        connection.commit()
+        conn = create_connection()
+        cur = conn.cursor()
+        cur.execute("update data set Name=?, Number=?, City=?, Salary=? where ID = ?",
+                    (item.name, item.number, item.city, item.salary, id))
+        conn.commit()
         return {
             "code": 200,
-            "message": "data update successfully..."
+            "message": "success",
+            "details": "data updated successfully"
         }
     except pyodbc.Error as e:
-        print(f"Error while fetching data: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve records")
+        print(f"Error while updating records...{e}")
+        raise HTTPException(status_code=404, detail="Failed to update records")
 
 
-@app.delete('/record_id{person_id}')
-async def get_id_data(person_id: int):
+@app.delete("/delete/{id}")
+async def delete_data(id: int):
     try:
-        connection = create_conn()
-        cur = connection.cursor()
-        cur.execute("delete from abc where PersonID = ?", person_id)
-        connection.commit()
+        conn = create_connection()
+        cur = conn.cursor()
+        cur.execute("delete from data where id = ?", id)
+        conn.commit()
         return {
             "code": 200,
-            "data": "Data deleted successfully..."
+            "message": "success",
+            "details": "data deleted successfully"
         }
 
     except pyodbc.Error as e:
-        print(f"Error while fetching data: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve records")
+        print(f"Error while deleting records...{e}")
+        raise HTTPException(status_code=404, detail="Failed to delete records")
